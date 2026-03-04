@@ -1,0 +1,77 @@
+You are tasked with creating a comprehensive summary of a document page. Your summary should focus on extracting and describing the main content, tables, figures, and images present on the page.
+
+Page OCR Text (if available):
+{PAGE_TEXT}
+
+## Instructions
+
+Please analyze the page image and create a structured summary that captures:
+1. The essential textual information from the page
+2. Descriptions of any visual elements (tables, figures, images, charts)
+3. Any particularly notable or unique information
+4. **Specific numbers, names, dates, and key facts** that could answer questions
+5. **Cross-page references** (e.g., "as shown in Table 3", "see Figure 5 on page 12")
+
+## Output Format
+
+You MUST output in this exact format with both tags:
+
+<summary>
+[4-7 sentences describing the page content. Be specific about what information is present.]
+
+**Text Evidence:**
+- [Key textual claims, findings, or statements with specific details]
+
+**Visual Evidence:**
+[For each visual element, include one of these tags:]
+<table_summary>Table X: [title/description] - [key columns and notable values]</table_summary>
+<figure_summary>Figure X: [title/description] - [what it shows and key values]</figure_summary>
+<chart_summary>Chart X: [title/description] - [type of chart and key data points]</chart_summary>
+<image_summary>[description of photos, maps, illustrations, diagrams - include key labels, locations, identifiable elements]</image_summary>
+</summary>
+
+<entities>
+NUMBERS: [all numerical values with context, e.g., "95.2% accuracy", "$1.5M revenue", "25.6M parameters"]
+NAMES: [people, companies, products, models, places, e.g., "ResNet-50", "ImageNet", "John Smith"]
+DATES: [years, time periods, deadlines, e.g., "2023", "Q3 2024", "from 2019 to 2022"]
+TERMS: [technical terms, acronyms, definitions, e.g., "CNN", "transformer", "backpropagation"]
+REFERENCES: [cross-page/section references, e.g., "Table 3", "Figure 5", "Section 3.2", "as mentioned on page 12"]
+</entities>
+
+## Example
+
+<summary>
+This page (Page 15) introduces the concept of neural network architectures in Section 3.2. It discusses convolutional layers and their applications in image processing, noting that CNNs achieve 95.2% accuracy on ImageNet. The authors compare three popular architectures and highlight trade-offs between model size and performance. Results are compared with baseline methods shown in Table 1 on page 10.
+
+**Text Evidence:**
+- CNNs achieve 95.2% top-1 accuracy on ImageNet benchmark
+- ResNet-50 provides best accuracy-to-parameter ratio
+- Training was conducted for 100 epochs with batch size 256
+
+**Visual Evidence:**
+<table_summary>Table 1: Comparison of model parameters - ResNet-50 (25.6M params, 76.1% acc), VGG-16 (138M params, 71.5% acc), EfficientNet-B0 (5.3M params, 77.1% acc).</table_summary>
+
+<figure_summary>Figure 2: Architecture diagram showing data flow through 5 convolutional layers and 3 pooling layers. Input size 224x224, output 1000 classes.</figure_summary>
+
+<image_summary>Campus Map: Shows the university layout with labeled buildings (A-K), main roads including Zijing Road and Xuetang Road, dormitory areas, and key facilities. Location C marks the intersection of Zijing Road and Xuetang Road.</image_summary>
+</summary>
+
+<entities>
+NUMBERS: 95.2% accuracy, 25.6M parameters, 138M parameters, 5.3M parameters, 76.1%, 71.5%, 77.1%, 224x224, 1000 classes, 100 epochs, batch size 256
+NAMES: ResNet-50, VGG-16, EfficientNet-B0, ImageNet, NVIDIA A100, PyTorch
+DATES: None
+TERMS: CNN, convolutional layers, pooling layers, top-1 accuracy, backpropagation
+REFERENCES: Table 1, Figure 2, Section 3.2, Table 1 on page 10
+</entities>
+
+## Key Focus Areas
+
+Focus on information that would help answer questions such as:
+- What are the key findings/numbers? (quantitative questions)
+- What methods/approaches are described? (methodology questions)
+- What comparisons are made? (comparison questions)
+- What conclusions are drawn? (conclusion questions)
+- What is shown in the figure/table/chart? (visual evidence questions)
+- How many / What percentage / What is the total? (counting questions)
+
+**CRITICAL: The <entities> tag is essential for retrieval. Structure entities by category (NUMBERS, NAMES, DATES, TERMS, REFERENCES) to enable precise matching.**

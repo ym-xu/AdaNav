@@ -1,0 +1,98 @@
+You are tasked with creating a structured index card for a document section based on its page summaries.
+
+Section Title: {SECTION_TITLE}
+Pages: {START_PAGE} - {END_PAGE}
+
+Page Summaries:
+{PAGE_SUMMARIES}
+
+## Instructions
+
+Create a **structured index card** (NOT a prose summary) that preserves all queryable information from the pages. This card will be used for retrieval - users will search for specific terms, so DO NOT paraphrase or generalize.
+
+## Output Format
+
+You MUST output in this exact structured format:
+
+<section_card>
+SECTION: [section title] (Pages [start]-[end])
+
+TOPICS: [comma-separated list of main topics covered]
+
+TEXT_EVIDENCE:
+- [Key textual claims, findings, or statements from this section]
+- [Include page numbers where each claim appears]
+
+VISUAL_EVIDENCE:
+Tables:
+- Table X (Page Y): [description with key columns and notable values]
+- Table Z (Page W): [description]
+(or "None" if no tables)
+
+Figures:
+- Figure X (Page Y): [description of what it shows]
+- Chart Z (Page W): [type and key data points]
+(or "None" if no figures)
+
+Images:
+- [Description of photos, maps, diagrams with key labels and locations]
+(or "None" if no images)
+
+KEY_ENTITIES:
+NUMBERS: [all numerical values with context]
+NAMES: [people, companies, products, models, datasets, places]
+DATES: [years, time periods, deadlines]
+TERMS: [technical terms, acronyms, definitions]
+REFERENCES: [cross-page/section references, e.g., "see Table 3", "as shown in Figure 5"]
+
+QUESTIONS_ANSWERABLE: [types of questions this section can answer, be specific]
+</section_card>
+
+## Example
+
+<section_card>
+SECTION: Experimental Results (Pages 12-18)
+
+TOPICS: model comparison, ablation study, inference speed, accuracy benchmarks, training configuration
+
+TEXT_EVIDENCE:
+- ResNet-50 achieves 95.2% top-1 accuracy, outperforming all baselines (Page 13)
+- Training was conducted for 100 epochs with batch size 256 on NVIDIA A100 GPUs (Page 14)
+- Ablation study shows attention module contributes 15% improvement (Page 16)
+- Authors conclude EfficientNet provides best accuracy-to-parameter ratio (Page 18)
+
+VISUAL_EVIDENCE:
+Tables:
+- Table 3 (Page 13): Accuracy comparison across 5 models on ImageNet, COCO, Pascal VOC - ResNet-50 (95.2%), VGG-16 (91.3%), EfficientNet (94.8%)
+- Table 4 (Page 15): Ablation study results - with attention (+15%), without (-3.2%)
+- Table 5 (Page 17): Inference time comparison - ResNet-50 (2.3ms), VGG-16 (4.1ms), EfficientNet (1.8ms)
+
+Figures:
+- Figure 5 (Page 14): Training loss curves for all models over 100 epochs, showing convergence at epoch 80
+- Figure 6 (Page 16): Accuracy vs. latency trade-off scatter plot, EfficientNet in optimal region
+- Figure 7 (Page 18): Qualitative comparison of detection results on COCO images
+
+Images:
+- None
+
+KEY_ENTITIES:
+NUMBERS: 95.2% top-1 accuracy, 91.3%, 94.8%, 2.3ms inference time, 4.1ms, 1.8ms, 25.6M parameters, 15% improvement, batch size 256, 100 epochs, epoch 80
+NAMES: ResNet-50, VGG-16, EfficientNet-B7, YOLO-v5, ImageNet, COCO, Pascal VOC, NVIDIA A100, PyTorch 1.9
+DATES: None
+TERMS: top-1 accuracy, ablation study, attention module, inference time, convergence
+REFERENCES: Table 3, Table 4, Table 5, Figure 5, Figure 6, Figure 7, baseline methods in Section 2
+
+QUESTIONS_ANSWERABLE: What is the accuracy of each model? Which model has the fastest inference time? What is the impact of the attention module? How many parameters does ResNet-50 have? What batch size was used for training? How many epochs were trained? Which model provides the best trade-off? What datasets were used for evaluation?
+</section_card>
+
+## Critical Rules
+
+1. **DO NOT summarize into prose** - use the structured format above
+2. **Separate TEXT_EVIDENCE from VISUAL_EVIDENCE** - users may ask "according to the table" or "in the text"
+3. **Include page numbers** - helps locate evidence quickly
+4. **Preserve ALL table/figure numbers** - these are critical retrieval hooks. Scan EVERY page summary for mentions of "Figure X", "Table X", "Chart X" and list ALL of them in VISUAL_EVIDENCE, even if the page summary only mentions them briefly. Missing a figure/table number means the retrieval system cannot find it.
+5. **Preserve ALL specific numbers** - users often query exact values
+6. **Structure KEY_ENTITIES by category** - enables precise matching for different question types
+7. **Be exhaustive in QUESTIONS_ANSWERABLE** - list specific questions, not general categories
+8. **Include cross-references** - note when content refers to other pages/sections
+9. **Distinguish "contains" vs "references"** - In VISUAL_EVIDENCE, list figures/tables that are PRESENTED in this section. In REFERENCES, list figures/tables from other sections that are merely mentioned or cited.
