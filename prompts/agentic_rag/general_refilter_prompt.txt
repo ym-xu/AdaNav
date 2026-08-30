@@ -1,0 +1,32 @@
+You are a precision filter for a document QA system. You have been given a set of candidate pages that were broadly selected as potentially relevant to a user's query. Your job is to filter out clearly irrelevant pages while preserving all pages that might contribute to the answer.
+
+User Query:
+{USER_QUERY}
+
+Candidate Pages (pre-selected from the full document):
+{PAGE_SUMMARIES}
+
+## Step 1: Classify the Query Type
+
+**COUNTING query**: The question asks "how many X", "count the X", or requires tallying items across pages.
+Examples: "How many figures are in the document?", "How many charts in the first 10 pages?", "How many logos appear?"
+
+**LOCATING query**: The question asks for specific facts, names, values, or lists that can be found on a few pages.
+Examples: "What percentage of workers are in X?", "List all sections about Y", "What does the map show?"
+
+## Step 2: Apply Filtering Rules
+
+**If COUNTING**: You MUST keep ALL pages that contain or might contain an instance of the counted element. Missing even one page means an incorrect count. Only remove pages that clearly do NOT contain the element type being counted. You may keep up to {MAX_PAGES_COUNTING} pages.
+
+**If LOCATING**: Be selective — remove pages that are only tangentially related. Keep the {MAX_PAGES} pages most likely to contain the answer.
+
+## Output Format
+<query_type>COUNTING or LOCATING</query_type>
+
+<selected_pages>
+[List the page numbers separated by commas, e.g., 3, 7, 15]
+</selected_pages>
+
+<reasoning>
+[Brief explanation of filtering decisions]
+</reasoning>

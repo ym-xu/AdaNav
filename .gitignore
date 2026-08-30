@@ -1,0 +1,23 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+env/
+
+# Source documents and rendered page images are not redistributed
+data/raw_pdfs/
+data/images/
+*.pdf
+
+# Run artefacts
+results/
+logs/
+*.log
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/
+*.swp
