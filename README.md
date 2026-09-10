@@ -1,14 +1,5 @@
 # AdaNav
 
-**Query-Adaptive Multi-granularity Navigation for Long Document Understanding**
-
-Yiming Xu, Eric López, Artemis Llabrés, Maximiliano Hormazábal, Ernest Valveny,
-Dimosthenis Karatzas · Computer Vision Center, Universitat Autònoma de Barcelona
-
-ICDAR 2026 · LNCS 16972, pp. 1–18 · [10.1007/978-3-032-36023-6_4](https://doi.org/10.1007/978-3-032-36023-6_4)
-
----
-
 AdaNav builds a multimodal document tree offline — Document → Section → Page →
 Element — and navigates it online at a granularity chosen per question, with no
 embedding retrieval model involved. Details are in the
