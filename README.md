@@ -16,8 +16,8 @@ embedding retrieval model involved. Details are in the
 
 ## Release status (Sep 10, 2026)
 
-The code and data are being cleaned up and refactored from the research
-codebase for public release. The complete release is planned **by
+The document-tree construction pipeline and the pre-built tree data are being
+rebuilt and verified for public release. The complete release is planned **by
 October 15, 2026**; until then, this repository is updated incrementally as
 each component is verified.
 
