@@ -14,12 +14,11 @@ Element — and navigates it online at a granularity chosen per question, with n
 embedding retrieval model involved. Details are in the
 [paper](https://doi.org/10.1007/978-3-032-36023-6_4).
 
-## ⚠️ Release status (Sep 10, 2026)
+## Release status (Sep 10, 2026)
 
-The final version of the document-tree construction code was lost in a storage
-migration, and the agent code is being reconstructed and refactored from an
-earlier snapshot. The complete code and data release is planned **by
-October 15, 2026**. Until then, this repository is updated incrementally as
+The code and data are being cleaned up and refactored from the research
+codebase for public release. The complete release is planned **by
+October 15, 2026**; until then, this repository is updated incrementally as
 each component is verified.
 
 ## Release plan
