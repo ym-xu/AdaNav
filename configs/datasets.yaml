@@ -1,0 +1,25 @@
+# Where each benchmark's MinerU output lives and where its trees are written.
+# Set mineru_root for your machine (absolute, or relative to the repo root). To keep
+# local paths out of git, copy this file to configs/datasets.local.yaml, which is
+# read instead when present and is ignored by git.
+
+mmlongbench:
+  mineru_root: /path/to/MinerU_25_MMLB_new
+  doctree_dir: data/doctree/mmlongbench
+  toc: provided        # process/toc.json + logical_pages.json shipped with the MinerU output
+
+papertab:
+  mineru_root: /path/to/MinerU_PaperTab
+  doctree_dir: data/doctree/papertab
+  toc: papertab        # derived from MinerU headings (adanav.doctree.toc)
+
+fetatab:
+  mineru_root: /path/to/MinerU_FetaTab
+  doctree_dir: data/doctree/fetatab
+  toc: fetatab
+
+# Section splitting (paper §3.2): sections longer than tau pages are split.
+split:
+  max_section_pages: 30
+  split_chunk_pages: 25
+  split_max_depth: 3

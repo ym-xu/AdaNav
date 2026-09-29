@@ -1,0 +1,4 @@
+PyYAML>=6.0
+openai>=1.0.0      # summaries and agents (any OpenAI-compatible endpoint)
+tqdm>=4.65.0
+PyMuPDF>=1.23.0    # only for rendering page images (scripts/prepare_mineru.py --render)
