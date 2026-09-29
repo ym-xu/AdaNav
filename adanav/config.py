@@ -31,4 +31,8 @@ def dataset_paths(name: str, config: Dict[str, Any]) -> Dict[str, Any]:
     for key in ("mineru_root", "doctree_dir"):
         p = Path(entry[key])
         entry[key] = p if p.is_absolute() else REPO_ROOT / p
+    if not entry["mineru_root"].is_dir():
+        raise SystemExit(
+            f"mineru_root for '{name}' not found: {entry['mineru_root']}\n"
+            "Set it in configs/datasets.yaml (or configs/datasets.local.yaml).")
     return entry
