@@ -5,35 +5,40 @@ Element — and navigates it online at a granularity chosen per question, with n
 embedding retrieval model involved. Details are in the
 [paper](https://doi.org/10.1007/978-3-032-36023-6_4).
 
-## Release status (Sep 29, 2026)
+This repository contains the document-tree construction and summary generation
+pipeline, and the prompt templates used by every AdaNav agent.
 
-The document-tree construction and summary generation pipeline is released —
-see the [Quickstart](#quickstart-build-the-document-trees) below. Pre-built
-trees for MMLongBench-Doc follow once their summaries are regenerated and
-verified. The complete release is planned **by October 15, 2026**; until then,
-this repository is updated incrementally as each component is verified.
+## Repository layout
 
-## Release plan
+```
+adanav/doctree/   tree construction from MinerU output, TOC derivation, summaries
+adanav/prompts.py prompt loading
+adanav/llm.py     OpenAI-compatible client
+configs/          dataset paths and section-splitting settings
+prompts/          prompt templates (see prompts/README.md)
+scripts/          command-line entry points
+data/             output location for the trees (see data/README.md)
+tests/            unit tests
+```
 
-| Target | Deliverable |
-|---|---|
-| ~~Sep 2026~~ | ~~Prompt templates (all agents + summary generation)~~ — released |
-| ~~Sep 29, 2026~~ | ~~Tree construction & summary generation pipeline~~ — released |
-| Oct 5, 2026 | Doctree data for MMLongBench-Doc + inference & agent code (Router, TreeNav / General / Specific agents, reasoner) |
-| Oct 15, 2026 | Evaluation scripts, remaining benchmark data (PaperTab, FetaTab), reproduction guide |
+## Installation
 
-## Quickstart: build the document trees
+```bash
+git clone https://github.com/ym-xu/AdaNav.git
+cd AdaNav
+pip install -r requirements.txt
+```
+
+PyMuPDF is only needed to render page images for PaperTab and FetaTab.
+
+## Building document trees
 
 Trees are built from [MinerU 2.5](https://github.com/opendatalab/MinerU)
 output in two steps: a rule-based structural pass, then summaries from a VLM.
 [`data/README.md`](data/README.md) documents each step, the output schema and
 the options in full.
 
-**1. Install and configure**
-
-```bash
-pip install -r requirements.txt
-```
+**1. Configure**
 
 Set `mineru_root` for each dataset in
 [`configs/datasets.yaml`](configs/datasets.yaml) to your MinerU output
@@ -62,6 +67,23 @@ python scripts/summarize_doctree.py --dataset mmlongbench \
 
 MMLongBench-Doc has about 6,500 pages; one server takes roughly four hours.
 The run is resumable — see [Step 3: summaries](data/README.md#step-3-summaries).
+
+Add `--first 2` or `--doc <doc_id>` to any command to try it on a few
+documents first.
+
+## Prompts
+
+[`prompts/`](prompts/) holds the templates for tree construction (page and
+section summaries), routing, navigation and reasoning.
+[`prompts/README.md`](prompts/README.md) maps each file to its stage, the
+section of the paper it implements, and the configurations reported in the
+paper.
+
+## Tests
+
+```bash
+python -m unittest discover tests
+```
 
 ## Citation
 
