@@ -22,7 +22,7 @@ def load_config(path: str | Path | None = None) -> Dict[str, Any]:
     return yaml.safe_load(Path(path).read_text(encoding="utf-8"))
 
 
-def dataset_paths(name: str, config: Dict[str, Any]) -> Dict[str, Any]:
+def dataset_paths(name: str, config: Dict[str, Any], require_mineru: bool = True) -> Dict[str, Any]:
     """Resolve a dataset entry; relative paths are taken from the repo root."""
     if name not in config or name == "split":
         known = ", ".join(k for k in config if k != "split")
@@ -32,7 +32,7 @@ def dataset_paths(name: str, config: Dict[str, Any]) -> Dict[str, Any]:
         if entry.get(key):
             p = Path(entry[key])
             entry[key] = p if p.is_absolute() else REPO_ROOT / p
-    if not entry["mineru_root"].is_dir():
+    if require_mineru and not entry["mineru_root"].is_dir():
         raise SystemExit(
             f"mineru_root for '{name}' not found: {entry['mineru_root']}\n"
             "Set it in configs/datasets.yaml (or configs/datasets.local.yaml).")

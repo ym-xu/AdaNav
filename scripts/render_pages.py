@@ -66,7 +66,7 @@ def main() -> None:
     ap.add_argument("--config", default=None, help="config file (default: configs/datasets.yaml)")
     args = ap.parse_args()
 
-    ds = dataset_paths(args.dataset, load_config(args.config) if args.config else load_config())
+    ds = dataset_paths(args.dataset, load_config(args.config) if args.config else load_config(), require_mineru=False)
     tree_root = ds["doctree_dir"]
     docs = sorted(p.name for p in tree_root.iterdir() if (p / "tree_index.json").exists())
     job = partial(render, tree_root=tree_root, pdf_dir=args.pdf_dir, out=args.out, dpi=args.dpi, png=args.png)
