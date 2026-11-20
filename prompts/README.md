@@ -17,39 +17,30 @@ Both are prompted with the rendered page image plus the MinerU OCR text
 
 | File | Used by | Paper reference |
 |---|---|---|
-| `agentic_rag/router_prompt.txt` | `f_llm(q, {(t_i, s_i)})` — reads all section titles and summaries jointly, returns the query category and the top-K candidate sections | §3.3, *Router* |
-| `agentic_rag/section_filter_prompt.txt` | Section selection as invoked from the agentic router; a variant of the base section filter tuned for the three-way `SPECIFIC / GENERAL / NORMAL` decision | §3.3, *Router* |
+| `agentic_rag/section_filter_prompt.txt` | `f_llm(q, {(t_i, s_i)})` in the agentic preset: reads the section titles and index cards, returns the top-K sections, or `ALL` for a global question (the GENERAL flag) | §3.3, *Router* |
+| `section_filter_prompt.txt` | The same step in the base preset (no rule stage, so it also covers explicit page references) | §3.3 |
+| `section_filter_chunk_prompt.txt` | Recall pass when a document's cards do not fit one prompt: each chunk of sections returns up to 3 candidates, or `ALL` | §3.3 |
+| `section_rerank_prompt.txt` | Picks the top K among the candidates of all chunks | §3.3 |
 
-The `SPECIFIC` path is decided by `f_rule(q, T)` — pure regular-expression
-reference detection — and therefore has no prompt and no LLM cost.
+The `SPECIFIC` path is decided by `f_rule(q, T)` — regular-expression reference
+detection and index lookup in `adanav/agents/specific.py` — and therefore has no prompt
+and no LLM cost.
 
 ## Online stage 2: navigation
 
 | File | Used by | Paper reference |
 |---|---|---|
-| `section_filter_prompt.txt` | Coarse section filtering in the single-path (Base) configuration | §3.3, *TreeNav Agent* |
-| `page_navigator_prompt.txt` | Page selection inside a candidate section. Also serves as the text-only pre-filter applied to sections longer than `τ_pre` before the VLM does fine-grained visual retrieval | §3.3, *TreeNav Agent* |
-| `agentic_rag/general_refilter_prompt.txt` | Precision re-filter over the union of pages returned by the chunked full-document scan; classifies the query as COUNTING vs LOCATING and prunes accordingly | §3.3, *General Agent* |
+| `vision_page_navigator_prompt.txt` | `π_page` (the default): page summaries and entities interleaved with the page images (`{PAGES}` marks where they go), sampled 3 times and merged; shared by the TreeNav Agent (`B_nav` = 4 pages per section) and the General Agent (`B_gen` = 10) | §3.4 |
+| `vision_prefilter_prompt.txt` | Text-only narrowing of sections longer than 30 pages before the vision navigator sees them | §3.4 |
+| `page_navigator_prompt.txt` | Text-only `π_page` (`--page-navigator text`): page summaries, entities and OCR text only | §3.4 |
+| `agentic_rag/general_refilter_prompt.txt` | Refilter over the union of the General Agent's pages; classifies the question as COUNTING vs LOCATING and keeps up to 15 / 5 pages | §3.4, §4.4 |
 
 ## Online stage 3: reasoning
 
 | File | Notes |
 |---|---|
-| `global_reasoner_prompt.txt` | Default reasoner. Scratchpad structure — identify key evidence from both modalities across the retrieved pages, then synthesise the answer. Used for the **AdaNav (Agentic)** rows |
-| `global_reasoner_prompt_v2.txt` | Adds financial-ratio and percentage-change conventions plus a strict condition-verification rule |
-| `global_reasoner_prompt_v3.txt` | `v2` with the condition-verification rule relaxed, to reduce over-abstention |
-| `global_reasoner_prompt_simpledoc.txt` | SimpleDoc-style reasoner prompt, consumes `{DOCUMENT_SUMMARY}`. Used for the **AdaNav (Base)** rows so the comparison with SimpleDoc holds the generation prompt fixed |
-| `global_reasoner_reflect_prompt.txt` | Reflection variant: on top of an answer it emits notes and a query update, enabling the iterative-refinement loop |
-| `global_reasoner_reflect_prompt_v2.txt` / `_v3.txt` | Reflection counterparts of `v2` / `v3` |
+| `global_reasoner_prompt.txt` | Reasoner of the agentic preset (one round). Scratchpad, then `<answer>` or `<not_answerable>` |
+| `global_reasoner_prompt_simpledoc.txt` | SimpleDoc-style reasoner, consumes `{DOCUMENT_SUMMARY}`; reasoner of the base preset |
+| `global_reasoner_reflect_prompt.txt` | Used when more than one round is allowed (`--iterations > 1`): may answer `<query_update>` + `<notes>`, and the updated query is navigated again |
 
-Selection logic in the reference implementation: an explicit `prompt_name`
-wins; otherwise `global_reasoner_reflect_prompt` is used when reflection is
-enabled and `global_reasoner_prompt` when it is not.
-
-## Reported configurations
-
-| Row in the paper | Reasoner prompt | Iterations |
-|---|---|---|
-| AdaNav (Base) | `global_reasoner_prompt_simpledoc` | 1 |
-| AdaNav (Agentic), Qwen3-VL-30B-A3B | `global_reasoner_prompt` | 3 |
-| AdaNav (Agentic), Qwen2.5-VL-32B | `global_reasoner_prompt` | 1 |
+`scripts/run_adanav.py --reasoner-prompt <name>` overrides the reasoner prompt of a preset.

@@ -6,14 +6,18 @@ embedding retrieval model involved. Details are in the
 [paper](https://doi.org/10.1007/978-3-032-36023-6_4).
 
 This repository contains the document-tree construction and summary generation
-pipeline, and the prompt templates used by every AdaNav agent.
+pipeline, the online agents (router, Specific / General / TreeNav navigators,
+reasoner), the evaluation scripts, and the prompt templates they use.
 
 ## Repository layout
 
 ```
 adanav/doctree/   tree construction from MinerU output, TOC derivation, summaries
+adanav/agents/    online inference: router, navigators, reasoner, pipeline
+adanav/eval/      benchmark loading, answer judge, retrieval and QA metrics
 adanav/prompts.py prompt loading
 adanav/llm.py     OpenAI-compatible client
+adanav/runs.py    run records (git state, command line) shared by the scripts
 configs/          dataset paths and section-splitting settings
 prompts/          prompt templates (see prompts/README.md)
 scripts/          command-line entry points
@@ -71,13 +75,32 @@ The run is resumable — see [Step 3: summaries](data/README.md#step-3-summaries
 Add `--first 2` or `--doc <doc_id>` to any command to try it on a few
 documents first.
 
+## Answering questions
+
+Each question is routed (explicit page / figure / table reference, global question, or
+content lookup), navigated to a few pages, and answered from the page images and OCR
+text. Set `samples` for the dataset in the datasets config, serve the model with a
+128k context (`vllm serve ... --max-model-len 131072`), then:
+
+```bash
+python scripts/run_adanav.py --dataset mmlongbench --run-dir results/mmlongbench/agentic \
+    --model Qwen/Qwen3-VL-30B-A3B-Instruct --base-url http://127.0.0.1:8011/v1
+
+# retrieval metrics, routing, and accuracy judged by GPT-4.1 ($OPENAI_API_KEY)
+python scripts/evaluate_adanav.py --run-dir results/mmlongbench/agentic
+```
+
+`--preset base` runs AdaNav (Base); `--iterations 3` lets the reasoner ask for more
+pages; `--no-specific`, `--no-general` and `--no-refilter` switch off one component;
+`--retrieval-only` stops before the reasoner. `scripts/judge_batch.py` judges the same
+answers through the OpenAI Batch API at half the price.
+
 ## Prompts
 
 [`prompts/`](prompts/) holds the templates for tree construction (page and
 section summaries), routing, navigation and reasoning.
-[`prompts/README.md`](prompts/README.md) maps each file to its stage, the
-section of the paper it implements, and the configurations reported in the
-paper.
+[`prompts/README.md`](prompts/README.md) maps each file to its stage and the
+section of the paper it implements.
 
 ## Tests
 

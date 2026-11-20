@@ -6,6 +6,8 @@ import base64
 import itertools
 import os
 import threading
+import zlib
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Iterable, Optional
 
@@ -23,11 +25,33 @@ class EndpointPool:
         key = api_key or os.environ.get("OPENAI_API_KEY", "dummy")
         self._clients = [OpenAI(api_key=key, base_url=url) for url in base_urls]
         self._cycle = itertools.cycle(self._clients)
+        self._order = itertools.cycle(range(len(self._clients)))
+        self._inflight = [0] * len(self._clients)
         self._lock = threading.Lock()
 
     def next(self):
         with self._lock:
             return next(self._cycle)
+
+    @contextmanager
+    def lease(self, key: Optional[str] = None):
+        """A client for one request. With a key, requests for that key go to the same endpoint,
+        so prompts sharing a long prefix (one document's section cards, repeated samples) hit
+        that server's prefix cache -- unless it has clearly more requests in flight than the
+        average, in which case the least busy endpoint takes it (bounded-load affinity)."""
+        with self._lock:
+            if key is None:
+                i = next(self._order)
+            else:
+                i = zlib.crc32(key.encode("utf-8")) % len(self._clients)
+                if self._inflight[i] > 1.25 * sum(self._inflight) / len(self._clients) + 2:
+                    i = min(range(len(self._clients)), key=self._inflight.__getitem__)
+            self._inflight[i] += 1
+        try:
+            yield self._clients[i]
+        finally:
+            with self._lock:
+                self._inflight[i] -= 1
 
     def __len__(self) -> int:
         return len(self._clients)

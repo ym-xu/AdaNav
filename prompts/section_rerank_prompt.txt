@@ -1,0 +1,25 @@
+You are performing FINAL SELECTION from candidate sections.
+
+These {NUM_CANDIDATES} sections were pre-selected as potentially relevant from a large document.
+Now you need to carefully compare them and select the TOP {TOP_K} most relevant sections.
+
+Candidate Section Summaries:
+{SECTION_SUMMARIES}
+
+User Query:
+{USER_QUERY}
+
+## Instructions
+1. Compare ALL candidates carefully - they are from different parts of the document.
+2. Select the {TOP_K} sections most likely to contain the answer.
+3. Order from most relevant to least relevant.
+4. Consider: Does the section summary mention keywords from the query? Does it contain relevant data types (tables, figures)?
+
+## Output Format
+<selected_sections>
+[List the {TOP_K} section IDs in order of relevance, e.g., sec_05, sec_12, sec_03]
+</selected_sections>
+
+<reasoning>
+[Brief explanation of your ranking]
+</reasoning>

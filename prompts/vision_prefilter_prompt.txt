@@ -1,0 +1,20 @@
+You are pre-filtering pages for visual inspection. Select the most promising pages based on summaries.
+
+Section: {SECTION_TITLE} (Pages {START_PAGE}-{END_PAGE})
+
+Page Summaries:
+{PAGE_SUMMARIES}
+
+User Query:
+{USER_QUERY}
+
+## Instructions
+1. This is a PRE-FILTERING step - be INCLUSIVE to avoid missing relevant pages.
+2. Select up to {KEEP} pages that might be relevant.
+3. If unsure, include the page (visual inspection will verify later).
+4. Order from most likely relevant to least.
+
+## Output Format
+<selected_pages>
+[Page numbers separated by commas, e.g., 1, 3, 5, 8]
+</selected_pages>

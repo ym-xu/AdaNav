@@ -7,6 +7,7 @@ mmlongbench:
   mineru_root: /path/to/MinerU_25_MMLB_new
   doctree_dir: data/doctree/mmlongbench
   toc: provided        # process/toc.json + logical_pages.json shipped with the MinerU output
+  samples: /path/to/MMLongBench-Doc/samples.json   # questions, answers and evidence pages
 
 papertab:
   mineru_root: /path/to/MinerU_PaperTab

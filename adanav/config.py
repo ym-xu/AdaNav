@@ -28,9 +28,10 @@ def dataset_paths(name: str, config: Dict[str, Any]) -> Dict[str, Any]:
         known = ", ".join(k for k in config if k != "split")
         raise SystemExit(f"unknown dataset '{name}' (known: {known})")
     entry = dict(config[name])
-    for key in ("mineru_root", "doctree_dir"):
-        p = Path(entry[key])
-        entry[key] = p if p.is_absolute() else REPO_ROOT / p
+    for key in ("mineru_root", "doctree_dir", "samples"):
+        if entry.get(key):
+            p = Path(entry[key])
+            entry[key] = p if p.is_absolute() else REPO_ROOT / p
     if not entry["mineru_root"].is_dir():
         raise SystemExit(
             f"mineru_root for '{name}' not found: {entry['mineru_root']}\n"

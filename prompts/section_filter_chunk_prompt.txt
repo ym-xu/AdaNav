@@ -1,0 +1,20 @@
+You are filtering sections from a large document (Chunk {CHUNK_INDEX}/{NUM_CHUNKS}).
+
+Section Summaries (Chunk {CHUNK_INDEX}):
+{SECTION_SUMMARIES}
+
+User Query:
+{USER_QUERY}
+
+## Instructions
+This is a RECALL phase - be inclusive, not exclusive.
+1. Select ALL sections that might be relevant to the query.
+2. If unsure, include the section (we will filter later).
+3. Select at least 1 section, at most {MAX_CANDIDATES} sections.
+4. **EXCEPTION**: If this is a GLOBAL counting query (e.g., "how many charts in the document", "count all tables"), output "ALL" to indicate all sections need to be scanned.
+
+## Output Format
+<selected_sections>
+[List section IDs, e.g., sec_01, sec_03]
+[OR output "ALL" for global counting queries]
+</selected_sections>
