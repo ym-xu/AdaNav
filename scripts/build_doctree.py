@@ -7,7 +7,9 @@ Usage:
     python scripts/build_doctree.py --dataset papertab --first 10
     python scripts/build_doctree.py --mineru-dir /path/<doc_id> --out /tmp/trees
 
-Existing trees are not overwritten (they may already hold summaries) unless --force.
+Existing trees are not overwritten (they may already hold summaries) unless --force;
+scripts/patch_doctree.py refreshes their page labels in place. With --dataset, the
+manual corrections in configs/doctree_fixes/<dataset>.json are applied.
 """
 
 from __future__ import annotations
@@ -21,6 +23,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from adanav.config import dataset_paths, load_config
 from adanav.doctree import build_tree, validate_tree
+from adanav.doctree.fixes import apply_fixes, fixes_path, load_fixes
 from adanav.doctree.mineru import SplitConfig
 
 
@@ -40,6 +43,7 @@ def main() -> None:
     config = load_config(args.config) if args.config else load_config()
     split = SplitConfig(**config.get("split", {}))
 
+    fixes = load_fixes(fixes_path(args.dataset)) if args.dataset else {}
     if args.mineru_dir:
         doc_dirs = [args.mineru_dir]
         out_root = args.out or Path(".")
@@ -67,6 +71,8 @@ def main() -> None:
             print(f"[SKIP] {doc_dir.name}: no pages")
             skipped += 1
             continue
+        for fix in apply_fixes(tree, fixes):
+            print(f"[FIX] {doc_dir.name}: {fix}")
         for problem in validate_tree(tree):
             print(f"[WARN] {doc_dir.name}: {problem}")
         out.parent.mkdir(parents=True, exist_ok=True)

@@ -20,7 +20,8 @@ Steps, in the order the evaluated trees were produced:
    recursing up to ``split_max_depth`` levels.
 4. MinerU elements are attached to their pages. Table and image elements get
    their text from the linearised table body, captions and footnotes, which is
-   also appended to the page's OCR text.
+   also appended to the page's OCR text. Each page gets its printed page label
+   from logical_pages.json (``page_label``; null when the page has none).
 5. Boundary pages that step 3 left unshared (fixed-size chunks) are shared by
    copying the next section's first page onto the end of the previous section.
 """
@@ -125,6 +126,19 @@ class MinerUDocument:
             else:
                 mapping[str(logical)] = idx
         return mapping
+
+    def page_labels(self) -> Dict[int, str]:
+        """0-indexed physical page -> printed page label ("12", "iv", "4-5", "0286", "cover").
+
+        From process/logical_pages.json; pages it does not list have no label.
+        """
+        path = self.doc_dir / "process" / "logical_pages.json"
+        if not path.exists():
+            return {}
+        data = json.loads(path.read_text(encoding="utf-8"))
+        return {info["physical_page"] - 1: str(info["logical_page"]).strip()
+                for info in data.get("pages", [])
+                if info.get("logical_page") is not None and info.get("physical_page") is not None}
 
     def resolve_page(self, label: Any) -> Optional[int]:
         """Resolve a TOC page label to a 0-indexed physical page, or None.
@@ -316,7 +330,7 @@ def element_text(item: Dict[str, Any]) -> str:
 
 
 def _build_page(page_idx: int, items: List[Dict[str, Any]], image: str,
-                by_crop: Dict[str, Dict[str, Any]]) -> Dict[str, Any]:
+                by_crop: Dict[str, Dict[str, Any]], label: Optional[str] = None) -> Dict[str, Any]:
     elements, extra = [], []
     for item in items:
         elem = {
@@ -341,7 +355,8 @@ def _build_page(page_idx: int, items: List[Dict[str, Any]], image: str,
     ocr = " ".join(i.get("text", "") for i in items if i.get("type") == "text")
     if extra:
         ocr = ocr + ("\n\n" if ocr else "") + "\n\n".join(extra)
-    return {"page_idx": page_idx, "image_path": image, "ocr_text": ocr, "summary": "", "elements": elements}
+    return {"page_idx": page_idx, "page_label": label, "image_path": image, "ocr_text": ocr, "summary": "",
+            "elements": elements}
 
 
 def _share_boundary_pages(sections: List[Dict[str, Any]]) -> None:
@@ -370,6 +385,7 @@ def build_tree(doc_dir: str | Path, cfg: SplitConfig = SplitConfig()) -> DocTree
     images = doc.page_images()
     num_pages = max(images) + 1 if images else len(by_page)
     image_rel = {i: p.relative_to(doc.doc_dir).as_posix() for i, p in images.items()}
+    labels = doc.page_labels()
 
     sections = _normalise_ranges(_level1_sections(doc, doc.load_toc()), num_pages)
     sections = _split_large_sections(doc, sections, cfg, cfg.split_max_depth)
@@ -384,7 +400,7 @@ def build_tree(doc_dir: str | Path, cfg: SplitConfig = SplitConfig()) -> DocTree
             "end_page": end,
             "summary": "",
             "pages": [
-                _build_page(i, by_page.get(i, []), image_rel.get(i, ""), by_crop)
+                _build_page(i, by_page.get(i, []), image_rel.get(i, ""), by_crop, labels.get(i))
                 for i in range(start, end + 1)
             ],
         })

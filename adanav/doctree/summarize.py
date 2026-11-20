@@ -8,28 +8,76 @@
    VISUAL_REFS_FROM_PAGES block, so the card lists them even if the LLM drops some.
 3. Root summary: the section cards joined by "\\n\\n---\\n\\n".
 
-Page summaries are cached per (doc_id, page_idx) in a JSON file, so a re-run only
-calls the model for pages that failed or are new.
+Each stage has a config (model, prompt and its SHA-256, sampling parameters)
+identified by a short fingerprint. Page summaries are cached per (doc_id,
+page_idx) together with the fingerprint of the page config that produced them;
+a lookup only returns entries made with the same config, so a re-run calls the
+model only for pages that failed, are new, or were made with another config.
+Every model call can also be appended, unparsed, to a JSONL log.
 """
 
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 import threading
+from collections import Counter
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
 from ..llm import EndpointPool, image_part
 from ..prompts import load_prompt
+from ..runs import now_iso
 
 VISUAL_REFS_MARKER = "\n\nVISUAL_REFS_FROM_PAGES:"
 _VISUAL_REF = re.compile(r"\b(Figure|Table|Chart)\s+(\d+)\b", re.IGNORECASE)
 
+PAGE_PROMPT = "page_summary_prompt"
+SECTION_PROMPT = "section_summary_prompt"
+
+
+SAMPLING_KEYS = ("max_tokens", "temperature", "top_p", "top_k", "presence_penalty", "repetition_penalty")
+
+
+def stage_config(model: str, prompt_name: str, prompt_text: str, sampling: dict) -> dict:
+    """Everything that determines what one summary stage produces, apart from sampling noise.
+
+    A sampling parameter set to None is not sent, so the endpoint's default applies
+    (vLLM takes it from the model's generation_config.json).
+    """
+    return {
+        "model": model,
+        "prompt": prompt_name,
+        "prompt_sha256": hashlib.sha256(prompt_text.encode("utf-8")).hexdigest(),
+        **{k: sampling.get(k) for k in SAMPLING_KEYS},
+    }
+
+
+def config_fingerprint(config: dict) -> str:
+    return hashlib.sha256(json.dumps(config, sort_keys=True).encode("utf-8")).hexdigest()[:12]
+
+
+def config_conflict(recorded: Optional[dict], current: dict) -> Optional[str]:
+    """A description of how ``current`` differs from ``recorded``, or None if it does not."""
+    if not recorded:
+        return None
+    keys = sorted(set(recorded) | set(current))
+    diffs = [f"{k}: {recorded.get(k)!r} -> {current.get(k)!r}" for k in keys if recorded.get(k) != current.get(k)]
+    return ", ".join(diffs) or None
+
 
 class PageSummaryCache:
-    """{"<doc_id>_p<page_idx>": {"summary": str, "entities": str}} persisted as JSON."""
+    """Page results persisted as JSON:
+
+        {"<doc_id>_p<page_idx>": {"summary": str, "entities": str,
+                                  "config": <page config fingerprint>, "finish_reason": str}}
+
+    ``get`` only returns an entry whose "config" matches the caller's, so entries
+    made with another model or prompt (or by older versions, which stored none)
+    are regenerated rather than reused.
+    """
 
     SAVE_EVERY = 50
 
@@ -37,6 +85,7 @@ class PageSummaryCache:
         self.path = path
         self._lock = threading.Lock()
         self._data: Dict[str, Dict[str, str]] = {}
+        self._unsaved = 0
         if path.exists():
             try:
                 self._data = json.loads(path.read_text(encoding="utf-8"))
@@ -47,15 +96,23 @@ class PageSummaryCache:
     def key(doc_id: str, page_idx: int) -> str:
         return f"{doc_id}_p{page_idx}"
 
-    def get(self, doc_id: str, page_idx: int) -> Optional[Dict[str, str]]:
+    def get(self, doc_id: str, page_idx: int, config: str) -> Optional[Dict[str, str]]:
         with self._lock:
-            return self._data.get(self.key(doc_id, page_idx))
+            entry = self._data.get(self.key(doc_id, page_idx))
+        return entry if entry and entry.get("config") == config else None
 
     def set(self, doc_id: str, page_idx: int, value: Dict[str, str]) -> None:
         with self._lock:
             self._data[self.key(doc_id, page_idx)] = value
-            if len(self._data) % self.SAVE_EVERY == 0:
+            self._unsaved += 1
+            if self._unsaved >= self.SAVE_EVERY:
                 self._write()
+
+    def count(self, config: str) -> Tuple[int, int]:
+        """(entries made with ``config``, entries made with anything else)."""
+        with self._lock:
+            same = sum(1 for e in self._data.values() if e.get("config") == config)
+            return same, len(self._data) - same
 
     def save(self) -> None:
         with self._lock:
@@ -63,7 +120,10 @@ class PageSummaryCache:
 
     def _write(self) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        self.path.write_text(json.dumps(self._data, ensure_ascii=False, indent=2), encoding="utf-8")
+        tmp = self.path.with_suffix(self.path.suffix + ".tmp")
+        tmp.write_text(json.dumps(self._data, ensure_ascii=False, indent=2), encoding="utf-8")
+        tmp.replace(self.path)
+        self._unsaved = 0
 
     def __len__(self) -> int:
         return len(self._data)
@@ -138,35 +198,72 @@ def root_summary(tree: dict) -> str:
 
 
 class Summarizer:
-    """Fills page, section and root summaries into a tree in place."""
+    """Fills page, section and root summaries into a tree in place.
+
+    ``stats`` counts, per run: model calls, cache hits, errors, and results cut
+    off by ``max_tokens`` (finish_reason "length", from a new call or the cache).
+    """
 
     def __init__(self, model: str, pool: EndpointPool, cache: Optional[PageSummaryCache] = None,
-                 page_workers: int = 4, max_tokens: int = 1024, temperature: float = 0.1):
+                 page_workers: int = 4, max_tokens: int = 1024, temperature: float = 0.1,
+                 top_p: Optional[float] = None, top_k: Optional[int] = None,
+                 presence_penalty: Optional[float] = None, repetition_penalty: Optional[float] = None,
+                 raw_log: Optional[Path] = None):
         self.model = model
         self.pool = pool
         self.cache = cache
         self.page_workers = page_workers
-        self.max_tokens = max_tokens
-        self.temperature = temperature
-        self.page_prompt = load_prompt("page_summary_prompt")
-        self.section_prompt = load_prompt("section_summary_prompt")
+        self.sampling = {"max_tokens": max_tokens, "temperature": temperature, "top_p": top_p, "top_k": top_k,
+                         "presence_penalty": presence_penalty, "repetition_penalty": repetition_penalty}
+        self.raw_log = raw_log
+        self.page_prompt = load_prompt(PAGE_PROMPT)
+        self.section_prompt = load_prompt(SECTION_PROMPT)
+        self.page_config = stage_config(model, PAGE_PROMPT, self.page_prompt, self.sampling)
+        self.section_config = stage_config(model, SECTION_PROMPT, self.section_prompt, self.sampling)
+        self.page_fp = config_fingerprint(self.page_config)
+        self.section_fp = config_fingerprint(self.section_config)
+        self.stats: Counter = Counter()
+        self._stats_lock = threading.Lock()
+        self._log_lock = threading.Lock()
 
-    def _chat(self, content) -> str:
+    def _chat(self, content) -> Tuple[str, Optional[str], Dict[str, int]]:
+        """(response text, finish_reason, token usage)."""
+        # OpenAI parameters go as keywords; top_k and repetition_penalty are vLLM extensions.
+        standard = {k: v for k, v in self.sampling.items()
+                    if v is not None and k not in ("top_k", "repetition_penalty")}
+        extra = {k: self.sampling[k] for k in ("top_k", "repetition_penalty") if self.sampling[k] is not None}
         response = self.pool.next().chat.completions.create(
             model=self.model,
             messages=[{"role": "user", "content": content}],
-            max_tokens=self.max_tokens,
-            temperature=self.temperature,
+            **standard,
+            **({"extra_body": extra} if extra else {}),
         )
-        return response.choices[0].message.content
+        choice = response.choices[0]
+        usage = getattr(response, "usage", None)
+        tokens = {"prompt": usage.prompt_tokens, "completion": usage.completion_tokens} if usage else {}
+        return choice.message.content or "", getattr(choice, "finish_reason", None), tokens
+
+    def _log(self, record: dict) -> None:
+        if self.raw_log is None:
+            return
+        line = json.dumps({"time": now_iso(), **record}, ensure_ascii=False)
+        with self._log_lock:
+            self.raw_log.parent.mkdir(parents=True, exist_ok=True)
+            with self.raw_log.open("a", encoding="utf-8") as f:
+                f.write(line + "\n")
+
+    def _count(self, *keys: str) -> None:
+        with self._stats_lock:
+            self.stats.update(keys)
 
     # ---- pages ------------------------------------------------------------
 
     def page_summary(self, doc_id: str, page: dict, image_root: Path) -> Dict[str, str]:
         page_idx = page.get("page_idx", 0)
         if self.cache is not None:
-            cached = self.cache.get(doc_id, page_idx)
+            cached = self.cache.get(doc_id, page_idx, self.page_fp)
             if cached:
+                self._count("page_cached", *(["page_truncated"] if cached.get("finish_reason") == "length" else []))
                 return cached
 
         content = [{"type": "text",
@@ -176,28 +273,46 @@ class Summarizer:
         if image:
             content.append(image)
 
+        meta = {"kind": "page", "doc_id": doc_id, "page_idx": page_idx, "config": self.page_fp,
+                "image": image is not None}
+        failed = {"summary": "", "entities": ""}  # not cached, retried on the next run
         try:
-            result = parse_page_response(self._chat(content))
+            text, finish, tokens = self._chat(content)
         except Exception as e:
             print(f"[ERROR] {doc_id} page {page_idx}: {e}")
-            return {"summary": "", "entities": ""}  # not cached, retried on the next run
+            self._log({**meta, "error": repr(e)})
+            self._count("page_errors")
+            return failed
+        self._log({**meta, "finish_reason": finish, "tokens": tokens, "response": text})
+        self._count("page_calls", *(["page_truncated"] if finish == "length" else []))
+
+        result = {**parse_page_response(text), "config": self.page_fp, "finish_reason": finish}
+        if not result["summary"]:
+            print(f"[ERROR] {doc_id} page {page_idx}: empty response")
+            self._count("page_errors")
+            return failed
         if self.cache is not None:
             self.cache.set(doc_id, page_idx, result)
         return result
 
     def summarize_pages(self, tree: dict, image_root: Path) -> None:
-        pages = [p for s in tree["sections"] for p in s["pages"]]
+        # A boundary page appears in every section that shares it; summarise it once.
+        copies: Dict[int, List[dict]] = {}
+        for s in tree["sections"]:
+            for p in s["pages"]:
+                copies.setdefault(p.get("page_idx", 0), []).append(p)
         with ThreadPoolExecutor(max_workers=self.page_workers) as pool:
-            futures = {pool.submit(self.page_summary, tree["doc_id"], p, image_root): p for p in pages}
+            futures = {pool.submit(self.page_summary, tree["doc_id"], pages[0], image_root): pages
+                       for pages in copies.values()}
             for future in as_completed(futures):
-                page = futures[future]
                 result = future.result()
-                page["summary"] = result["summary"]
-                page["entities"] = result["entities"]
+                for page in futures[future]:
+                    page["summary"] = result["summary"]
+                    page["entities"] = result["entities"]
 
     # ---- sections and root ------------------------------------------------
 
-    def section_card(self, section: dict) -> str:
+    def section_card(self, section: dict, doc_id: str = "") -> str:
         page_texts = _section_page_texts(section)
         start, end = section.get("start_page", 0), section.get("end_page", 0)
         # Each entry already starts with "Page N:"; the evaluated cards were produced
@@ -209,16 +324,32 @@ class Summarizer:
             SECTION_TITLE=section.get("title", ""), START_PAGE=start + 1, END_PAGE=end + 1,
             PAGE_SUMMARIES=joined,
         )
+        meta = {"kind": "section", "doc_id": doc_id, "section_id": section.get("id", ""),
+                "config": self.section_fp}
+        label = f"{doc_id} section '{section.get('title', '')}'"
         try:
-            card = parse_section_response(self._chat(prompt))
+            text, finish, tokens = self._chat(prompt)
         except Exception as e:
-            print(f"[ERROR] section '{section.get('title', '')}': {e}")
+            print(f"[ERROR] {label}: {e}")
+            self._log({**meta, "error": repr(e)})
+            self._count("section_errors")
+            return ""
+        self._log({**meta, "finish_reason": finish, "tokens": tokens, "response": text})
+        self._count("section_calls", *(["section_truncated"] if finish == "length" else []))
+
+        card = parse_section_response(text)
+        if not card:
+            print(f"[ERROR] {label}: empty response")
+            self._count("section_errors")
             return ""
         return add_visual_refs(card, extract_visual_refs(page_texts, start))
 
     def summarize_sections(self, tree: dict) -> None:
-        for section in tree["sections"]:
-            section["summary"] = self.section_card(section)
+        sections = tree["sections"]
+        with ThreadPoolExecutor(max_workers=self.page_workers) as pool:
+            cards = list(pool.map(lambda s: self.section_card(s, tree.get("doc_id", "")), sections))
+        for section, card in zip(sections, cards):
+            section["summary"] = card
         tree["root_summary"] = root_summary(tree)
 
 

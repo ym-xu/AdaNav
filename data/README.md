@@ -5,7 +5,9 @@ One directory per document:
 
 ```
 data/doctree/<dataset>/
+├── run_info.json              # summary config and run history (step 3)
 ├── page_summaries.json        # page summary cache (step 3)
+├── raw_responses.jsonl        # every model response, unparsed (step 3)
 └── <doc_id>/
     └── tree_index.json
 ```
@@ -66,6 +68,17 @@ pages, and adds table bodies and figure / table captions to the element and page
 text. The output reproduces the section structure of the trees evaluated in the
 paper field for field.
 
+Each page also gets its printed page label (`page_label`) from
+`process/logical_pages.json`, which the SpecificAgent uses to resolve "page N".
+Where that file is wrong, the correction goes in
+`configs/doctree_fixes/<dataset>.json` (format in `adanav/doctree/fixes.py`);
+`build_doctree.py --dataset` applies it. To refresh the labels of trees that
+already have summaries, without rebuilding them:
+
+```bash
+python scripts/patch_doctree.py --dataset mmlongbench
+```
+
 Existing trees are not overwritten unless `--force` — it would drop their
 summaries. A `[WARN]` line reports a structural oddity; for MMLongBench-Doc
 expect exactly three, for the documents with out-of-order TOCs listed below.
@@ -99,12 +112,32 @@ four hours.
 `data/doctree/<dataset>/page_summaries.json` as they arrive (saved every 50
 pages and at the end). Re-running the same command skips complete trees, serves
 cached pages without a model call, and retries only what is missing: pages whose
-request failed are never cached, and section cards are regenerated for any tree
-that still has a gap.
+request failed or came back empty are never cached, and section cards are
+regenerated for any tree that still has a gap.
+
+**Configs.** The page and section stages each have a config: model, prompt
+file and its SHA-256, and the sampling parameters. Cache entries carry
+the fingerprint of the page config that made them and are only reused under the
+same config. `run_info.json` records the config the trees in that directory were
+made with; a run with a different config stops before calling the model, so one
+directory never mixes two configs. To try another model or prompt, give it its
+own directory: copy `configs/datasets.yaml`, change `doctree_dir`, build the
+structure there and pass `--config` to both scripts. When only the section
+prompt changes, `--cache` pointed at the first directory's
+`page_summaries.json` reuses its page summaries without model calls.
+
+**Run records.** Each run appends an entry to `run_info.json` with its command
+line, git commit (and any uncommitted tracked files), endpoints, document counts
+and call statistics: model calls, cache hits, errors and truncations
+(`*_truncated` counts responses that stopped at `--max-tokens`, whether new or
+from the cache). `raw_responses.jsonl` keeps every response unparsed, one JSON
+object per call, with its `finish_reason`, token usage and config fingerprint;
+failed requests appear with an `error` field.
 
 **Checking.** A tree is complete when `root_summary` and every section and page
 `summary` are non-empty. `[ERROR]` lines name pages or sections whose request
-failed; re-run the same command until none remain.
+failed, and `[INCOMPLETE]` lines name trees still missing a summary; re-run the
+same command until none remain.
 
 The model samples at temperature 0.1, so regenerated summaries differ in wording
 from the ones used in the paper.
@@ -116,6 +149,8 @@ from the ones used in the paper.
 | `--page-only` | page summaries only |
 | `--section-only` | rebuild section cards and root summary from existing page summaries |
 | `--refresh-refs` | recompute the `VISUAL_REFS_FROM_PAGES` block of each card; no model calls |
+| `--max-tokens N`, `--temperature T` | per-response token limit (1024) and sampling temperature (0.1), as in the paper |
+| `--top-p`, `--top-k`, `--presence-penalty`, `--repetition-penalty` | further sampling parameters; unset ones are not sent and the endpoint default applies (for vLLM, the model's `generation_config.json`) |
 | `--no-cache`, `--cache PATH` | disable, or relocate, the page summary cache |
 | `--workers`, `--doc-workers` | concurrent page requests per document (4), documents in parallel (2) |
 | `--api-key` | key for hosted endpoints (default `$OPENAI_API_KEY`) |
@@ -162,6 +197,7 @@ evaluated trees had them, and `build_doctree.py` prints a warning.
       "pages": [
         {
           "page_idx": 0,
+          "page_label": "1",                    // printed label ("12", "iv", "4-5", "cover"); null if none
           "image_path": "images/page_1.png",   // relative to <mineru_root>/<doc_id>/
           "ocr_text": "LLAMA 2: Open Foundation...",
           "summary": "",                        // page summary p_j

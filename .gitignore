@@ -25,5 +25,6 @@ logs/
 # Machine-specific dataset paths (see configs/datasets.yaml)
 configs/datasets.local.yaml
 
-# Page summary cache written by scripts/summarize_doctree.py
+# Page summary cache and raw model responses written by scripts/summarize_doctree.py
 data/doctree/*/page_summaries.json
+data/doctree/*/raw_responses.jsonl

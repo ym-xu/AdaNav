@@ -6,7 +6,7 @@ annotated layout and the mapping onto the paper's notation.
 
 from __future__ import annotations
 
-from typing import Any, Dict, List, TypedDict, Union
+from typing import Any, Dict, List, Optional, TypedDict, Union
 
 
 class Element(TypedDict):
@@ -21,7 +21,8 @@ class Element(TypedDict):
 
 class Page(TypedDict, total=False):
     page_idx: int
-    image_path: str               # relative to the document dir, e.g. "images/page_1.png"
+    page_label: Optional[str]     # printed page label ("12", "iv", "4-5", "cover"); None if unprinted
+    image_path: str              # relative to the document dir, e.g. "images/page_1.png"
     ocr_text: str
     summary: str                  # page summary p_j (filled by summarize)
     entities: str                 # categorised entity list (filled by summarize)
