@@ -39,8 +39,8 @@ and no LLM cost.
 
 | File | Notes |
 |---|---|
-| `global_reasoner_prompt.txt` | Reasoner of the agentic preset (one round). Scratchpad, then `<answer>` or `<not_answerable>` |
+| `global_reasoner_prompt.txt` | Reasoner of the agentic preset with `--iterations 1`. Scratchpad, then `<answer>` or `<not_answerable>` |
 | `global_reasoner_prompt_simpledoc.txt` | SimpleDoc-style reasoner, consumes `{DOCUMENT_SUMMARY}`; reasoner of the base preset |
-| `global_reasoner_reflect_prompt.txt` | Used when more than one round is allowed (`--iterations > 1`): may answer `<query_update>` + `<notes>`, and the updated query is navigated again |
+| `global_reasoner_reflect_prompt.txt` | Used when more than one round is allowed (the agentic preset: 3): may answer `<query_update>` + `<notes>`, and the updated query is navigated again |
 
 `scripts/run_adanav.py --reasoner-prompt <name>` overrides the reasoner prompt of a preset.

@@ -22,6 +22,7 @@ User Query:
 3. Be inclusive - if a section seems even somewhat related, include it.
 4. Always select at least one section.
 5. Order sections from most relevant to least relevant.
+6. If the query combines several pieces of information (a comparison, several years, groups, items or pages, a list, or a count over a part of the document), select every section that may hold any one of the pieces - typically 2 to 5 sections.
 
 ## Global/Counting Queries (IMPORTANT)
 Some queries require scanning the ENTIRE document. Use `ALL` ONLY for these cases:

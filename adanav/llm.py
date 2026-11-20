@@ -67,4 +67,5 @@ def image_part(path: str | Path, detail: str = "high") -> Optional[dict]:
     except OSError as e:
         print(f"[WARN] failed to read image {path}: {e}")
         return None
-    return {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{data}", "detail": detail}}
+    mime = "image/jpeg" if path.suffix.lower() in (".jpg", ".jpeg") else "image/png"
+    return {"type": "image_url", "image_url": {"url": f"data:{mime};base64,{data}", "detail": detail}}

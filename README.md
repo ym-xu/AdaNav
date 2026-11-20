@@ -21,7 +21,7 @@ adanav/runs.py    run records (git state, command line) shared by the scripts
 configs/          dataset paths and section-splitting settings
 prompts/          prompt templates (see prompts/README.md)
 scripts/          command-line entry points
-data/             output location for the trees (see data/README.md)
+data/             document trees; MMLongBench-Doc's are included (see data/README.md)
 tests/            unit tests
 ```
 
@@ -33,12 +33,15 @@ cd AdaNav
 pip install -r requirements.txt
 ```
 
-PyMuPDF is only needed to render page images for PaperTab and FetaTab.
+PyMuPDF is only needed to render page images (PaperTab and FetaTab, `scripts/render_pages.py`).
 
 ## Building document trees
 
-Trees are built from [MinerU 2.5](https://github.com/opendatalab/MinerU)
-output in two steps: a rule-based structural pass, then summaries from a VLM.
+The trees for MMLongBench-Doc are included in
+[`data/doctree/mmlongbench/`](data/doctree/mmlongbench/), with summaries, printed page
+labels and figure descriptions; skip to [Answering questions](#answering-questions) to use
+them. Other datasets are built from [MinerU 2.5](https://github.com/opendatalab/MinerU)
+output: a rule-based structural pass, then summaries from a VLM.
 [`data/README.md`](data/README.md) documents each step, the output schema and
 the options in full.
 
@@ -79,19 +82,30 @@ documents first.
 
 Each question is routed (explicit page / figure / table reference, global question, or
 content lookup), navigated to a few pages, and answered from the page images and OCR
-text. Set `samples` for the dataset in the datasets config, serve the model with a
-128k context (`vllm serve ... --max-model-len 131072`), then:
+text. Render the page images from the
+[MMLongBench-Doc](https://github.com/mayubo2333/MMLongBench-Doc) PDFs: 150 DPI for
+navigation (the same images as MinerU's; skip this if you have MinerU output) and 200 DPI
+for the reasoner. Set `mineru_root` to the first directory and `samples` to the
+benchmark's `samples.json` in the datasets config, serve the model with a 128k context
+(`vllm serve ... --max-model-len 131072`), then run:
 
 ```bash
+python scripts/render_pages.py --dataset mmlongbench --dpi 150 --png \
+    --pdf-dir /path/to/MMLongBench-Doc/documents --out data/images/mmlongbench
+python scripts/render_pages.py --dataset mmlongbench --dpi 200 \
+    --pdf-dir /path/to/MMLongBench-Doc/documents --out data/images/mmlongbench_200dpi
+
 python scripts/run_adanav.py --dataset mmlongbench --run-dir results/mmlongbench/agentic \
-    --model Qwen/Qwen3-VL-30B-A3B-Instruct --base-url http://127.0.0.1:8011/v1
+    --model Qwen/Qwen3-VL-30B-A3B-Instruct --base-url http://127.0.0.1:8011/v1 \
+    --page-images data/images/mmlongbench_200dpi
 
 # retrieval metrics, routing, and accuracy judged by GPT-4.1 ($OPENAI_API_KEY)
 python scripts/evaluate_adanav.py --run-dir results/mmlongbench/agentic
 ```
 
-`--preset base` runs AdaNav (Base); `--iterations 3` lets the reasoner ask for more
-pages; `--no-specific`, `--no-general` and `--no-refilter` switch off one component;
+`--preset base` runs AdaNav (Base); `--iterations 1` stops after the first reasoner
+round (the agentic preset allows 3); `--no-specific`, `--no-general` and `--no-refilter`
+switch off one component; without `--page-images` the reasoner reads the MinerU page images;
 `--retrieval-only` stops before the reasoner. `scripts/judge_batch.py` judges the same
 answers through the OpenAI Batch API at half the price.
 

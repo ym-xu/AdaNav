@@ -68,6 +68,8 @@ class PageNavigator:
             lines.append(f"  Summary: {page.get('summary') or '(No summary available)'}")
             if page.get("entities"):
                 lines.append(f"  Key Entities: {page['entities']}")
+            if page.get("visual_notes"):
+                lines.append("  Figures:\n    " + page["visual_notes"].replace("\n", "\n    "))
             ocr = page.get("ocr_text") or ""
             if ocr:
                 lines.append(f"  OCR Text: {ocr[:OCR_CHARS]}{'...' if len(ocr) > OCR_CHARS else ''}")
@@ -130,6 +132,8 @@ class VisionPageNavigator(PageNavigator):
         text = f"\n--- Page {page['page_idx'] + 1} ---\nSummary: {page.get('summary') or '(No summary)'}\n"
         if page.get("entities"):
             text += f"Key Entities: {page['entities']}\n"
+        if page.get("visual_notes"):
+            text += f"Figures:\n{page['visual_notes']}\n"
         return text
 
     def _chunks(self, pages: List[dict]) -> List[List[dict]]:
@@ -151,6 +155,8 @@ class VisionPageNavigator(PageNavigator):
             lines.append(f"  Summary: {page.get('summary') or '(No summary)'}")
             if page.get("entities"):
                 lines.append(f"  Entities: {page['entities']}")
+            if page.get("visual_notes"):
+                lines.append("  Figures:\n    " + page["visual_notes"].replace("\n", "\n    "))
             ocr = page.get("ocr_text") or ""
             if ocr:
                 lines.append(f"  OCR: {ocr[:ocr_chars]}{'...' if len(ocr) > ocr_chars else ''}")
@@ -243,6 +249,8 @@ class GeneralAgent:
             lines.append(f"  Summary: {page.get('summary') or '(No summary)'}")
             if page.get("entities"):
                 lines.append(f"  Key Entities: {page['entities']}")
+            if page.get("visual_notes"):
+                lines.append("  Figures:\n    " + page["visual_notes"].replace("\n", "\n    "))
             lines.append("")
         return "\n".join(lines)
 

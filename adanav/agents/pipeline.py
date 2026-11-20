@@ -5,8 +5,9 @@
     answer   = Reasoner(q, pages, root summary)
 
 Presets
-    agentic  the full system (Router + three navigators, refilter on GENERAL): vision page
-             navigator, B_nav = 4, B_gen = 10
+    agentic  the full system (Router + three navigators, refilter on GENERAL): K = 5
+             sections, vision page navigator, B_nav = 4, B_gen = 10, figure descriptions
+             shown with the page summaries, 3 reasoner rounds
     base     "AdaNav (Base)": no rule stage and no GeneralAgent, every question goes
              through section selection and TreeNav (a global question navigates all
              sections with B_nav); base section-filter prompt, SimpleDoc reasoner prompt
@@ -23,6 +24,7 @@ from typing import Any, Dict, List, Optional
 
 from adanav.agents.chat import ChatModel, Trace
 from adanav.agents.navigators import GeneralAgent, PageNavigator, TreeNavAgent, VisionPageNavigator, page_map
+from adanav.agents.pages import add_visual_notes
 from adanav.agents.reasoner import NOT_ANSWERABLE, Reasoner
 from adanav.agents.router import GENERAL, NORMAL, SPECIFIC, Router, SectionSelector
 
@@ -46,9 +48,14 @@ class AdaNavConfig:
     max_images: int = 12
     prompt_budget: int = 60000         # estimated tokens per navigation prompt before chunking
     temperature: float = 0.1
+    visual_notes: bool = False         # show element descriptions of the tree to navigators and reasoner
+    page_order: str = "retrieval"      # order of the reasoner's pages: "retrieval" or "document"
+    retry_untagged: bool = False       # ask the reasoner once more when its response has no answer tag
+    page_images: str = ""              # <dir>/<doc_id>/page_<N>.jpg replaces the reasoner's page images
 
     PRESETS = {
-        "agentic": {},
+        "agentic": {"top_k": 5, "iterations": 3, "visual_notes": True, "page_order": "document",
+                    "retry_untagged": True},
         "base": {"use_specific": False, "use_general": False,
                  "filter_prompt": "section_filter_prompt", "reasoner_prompt": "global_reasoner_prompt_simpledoc"},
     }
@@ -82,7 +89,8 @@ class AdaNav:
                                     refilter_max=config.refilter_max,
                                     refilter_max_counting=config.refilter_max_counting,
                                     prompt_budget=config.prompt_budget)
-        self.reasoner = Reasoner(chat, prompt=config.reasoner_prompt, max_images=config.max_images)
+        self.reasoner = Reasoner(chat, prompt=config.reasoner_prompt, max_images=config.max_images,
+                                 retry_untagged=config.retry_untagged)
 
     def retrieve(self, question: str, tree: dict, trace: Trace, image_root: Optional[Path] = None) -> Dict[str, Any]:
         route = self.router.route(question, tree, trace)
@@ -100,6 +108,8 @@ class AdaNav:
     def run(self, question: str, tree: dict, image_root: Path, retrieval_only: bool = False) -> Dict[str, Any]:
         """One question end to end; the record includes the trace of every model call."""
         trace = Trace(key=tree.get("doc_id"))
+        if self.config.visual_notes:
+            add_visual_notes(tree)
         record = self.retrieve(question, tree, trace, Path(image_root))
         if not retrieval_only:
             record.update(self._reason(question, tree, Path(image_root), record["pages"], trace))
@@ -110,12 +120,15 @@ class AdaNav:
     def _reason(self, question, tree, image_root, pages, trace) -> Dict[str, Any]:
         by_idx = page_map(tree)
         pages, memory, rounds = list(pages), "", []
+        page_images = Path(self.config.page_images) / tree.get("doc_id", "") if self.config.page_images else None
         if not pages:
             trace.fallback("reasoner", "retrieval returned no pages")
         for r in range(1, self.config.iterations + 1):
-            out = self.reasoner.answer(question, [by_idx[p] for p in pages], image_root, trace,
-                                       doc_summary=tree.get("root_summary", ""), memory=memory, round_=r)
-            rounds.append({"round": r, "pages": list(pages), "images": out.images, "answer": out.answer,
+            shown = sorted(pages) if self.config.page_order == "document" else pages
+            out = self.reasoner.answer(question, [by_idx[p] for p in shown], image_root, trace,
+                                       doc_summary=tree.get("root_summary", ""), memory=memory, round_=r,
+                                       page_images=page_images)
+            rounds.append({"round": r, "pages": list(shown), "images": out.images, "answer": out.answer,
                            "query_update": out.query_update, "notes": out.notes})
             if out.answer:
                 return {"answer": out.answer, "rounds": rounds, "final_pages": pages}

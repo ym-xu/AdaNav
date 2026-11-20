@@ -2,14 +2,17 @@
 """Answer a benchmark's questions with AdaNav and record everything each question did.
 
 Usage:
-    # full system, single round (paper Algorithm 1), four vLLM replicas
+    # full system, several vLLM replicas
     python scripts/run_adanav.py --dataset mmlongbench --run-dir results/mmlongbench/agentic \
         --model Qwen/Qwen3-VL-30B-A3B-Instruct \
-        --base-url http://127.0.0.1:8011/v1 --base-url http://127.0.0.1:8012/v1 ...
+        --base-url http://127.0.0.1:8011/v1 --base-url http://127.0.0.1:8012/v1 ... \
+        --page-images data/images/mmlongbench_200dpi
 
+    --page-images DIR              reasoner page images from DIR/<doc_id>/page_<N>.jpg
+                                   (scripts/render_pages.py); default: the MinerU page images
     --preset base                  AdaNav (Base): no rule stage, no GeneralAgent
     --no-specific / --no-general   ablations of the agentic preset
-    --iterations 3                 reasoner may ask for more pages (reflection prompt)
+    --iterations 1                 single round (paper Algorithm 1); the agentic preset uses 3
     --retrieval-only               stop after navigation (enough for Recall / All-Hit / F1)
 
 <run-dir> receives
@@ -82,13 +85,14 @@ def main() -> None:
     ap.add_argument("--no-specific", action="store_true", help="no rule stage: SPECIFIC questions go to the router LLM")
     ap.add_argument("--no-general", action="store_true", help="global questions use TreeNav over all sections")
     ap.add_argument("--no-refilter", action="store_true")
-    ap.add_argument("--top-k", type=int, help="sections chosen by the router (K, default 3)")
+    ap.add_argument("--top-k", type=int, help="sections chosen by the router (K; agentic 5, base 3)")
     ap.add_argument("--page-navigator", choices=("vision", "text"), help="default vision")
     ap.add_argument("--vision-samples", type=int, help="vision navigator samples per chunk (default 3)")
     ap.add_argument("--b-nav", type=int, help="pages per section for TreeNav (default 4)")
     ap.add_argument("--b-gen", type=int, help="pages per section for the GeneralAgent (default 10)")
-    ap.add_argument("--iterations", type=int, help="reasoner rounds (default 1)")
+    ap.add_argument("--iterations", type=int, help="reasoner rounds (agentic 3, base 1)")
     ap.add_argument("--reasoner-prompt", help="prompt name under prompts/ (default per preset)")
+    ap.add_argument("--page-images", help="directory of <doc_id>/page_<N>.jpg page images for the reasoner")
     ap.add_argument("--retrieval-only", action="store_true")
     ap.add_argument("--doc", action="append", help="only questions on these doc ids (repeatable)")
     ap.add_argument("--first", type=int, help="only the first N questions")
@@ -100,7 +104,7 @@ def main() -> None:
 
     overrides = {"top_k": args.top_k, "b_nav": args.b_nav, "b_gen": args.b_gen, "iterations": args.iterations,
                  "reasoner_prompt": args.reasoner_prompt, "page_navigator": args.page_navigator,
-                 "vision_samples": args.vision_samples}
+                 "vision_samples": args.vision_samples, "page_images": args.page_images}
     if args.no_specific:
         overrides["use_specific"] = False
     if args.no_general:

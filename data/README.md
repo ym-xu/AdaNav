@@ -1,7 +1,9 @@
 # Doctree data
 
 Multimodal document trees — the offline artefact described in §3.2 of the paper.
-One directory per document:
+The MMLongBench-Doc trees are included (`data/doctree/mmlongbench/`, after all four
+steps below; the page summary cache and raw responses are not). One directory per
+document:
 
 ```
 data/doctree/<dataset>/
@@ -15,13 +17,14 @@ data/doctree/<dataset>/
 ## Building
 
 Trees are built from [MinerU 2.5](https://github.com/opendatalab/MinerU) output
-in three steps. Steps 1–2 are rule-based and take seconds; step 3 calls a VLM.
+in four steps. Steps 1, 2 and 4 are rule-based and take seconds; step 3 calls a VLM.
 
 | Step | Script | Reads | Writes |
 |---|---|---|---|
 | 1. Prepare (PaperTab / FetaTab only) | `prepare_mineru.py` | source PDF, MinerU content list | `images/page_N.png`, `process/toc.json`, `process/logical_pages.json` in the MinerU directory |
 | 2. Structure | `build_doctree.py` | MinerU directory | `data/doctree/<dataset>/<doc_id>/tree_index.json` without summaries |
 | 3. Summaries | `summarize_doctree.py` | the trees + page images | the same trees, now with summaries; `page_summaries.json` cache |
+| 4. Figure descriptions | `add_visual_descriptions.py` | the trees + `process/media_llm_results.json` | the same trees, with a `description` on image and table elements |
 
 ### Setup
 
@@ -43,7 +46,8 @@ Try everything on a couple of documents first by adding `--first 2` (or
 MMLongBench-Doc's MinerU output already contains page images,
 `process/toc.json` (level-1 headings with logical page labels) and
 `process/logical_pages.json` (logical → physical page map); skip this step for
-it. The tool that produced those two files is not part of this repository.
+it. The tool that produced those two files, and `process/media_llm_results.json`
+used in step 4, is not part of this repository.
 
 PaperTab and FetaTab need both:
 
@@ -155,6 +159,18 @@ from the ones used in the paper.
 | `--workers`, `--doc-workers` | concurrent page requests per document (4), documents in parallel (2) |
 | `--api-key` | key for hosted endpoints (default `$OPENAI_API_KEY`) |
 
+### Step 4: figure descriptions
+
+```bash
+python scripts/add_visual_descriptions.py --dataset mmlongbench
+```
+
+Copies the VLM description of each image and table crop from MinerU's
+`process/media_llm_results.json` onto the matching element (`description`), and its
+caption where MinerU attached none. The agentic preset shows these descriptions next
+to the page summaries during navigation and next to the OCR text in the reasoner.
+Summaries are kept; running it again gives the same trees.
+
 ## MMLongBench-Doc, structure after step 2
 
 | | |
@@ -210,7 +226,8 @@ evaluated trees had them, and `build_doctree.py` prints a warning.
               "bbox": [112, 237, 274, 250],     // [x0, y0, x1, y1] on the source page
               "text": "FOR RELEASE MAY 3, 2018",
               "path": "",                       // MinerU crop, relative like image_path
-              "caption": ""                     // "" or MinerU's list of caption lines
+              "caption": "",                    // "" or MinerU's list of caption lines
+              "description": ""                 // image / table only: VLM description (step 4)
             }
           ]
         }
@@ -235,7 +252,8 @@ Page images and source PDFs are **not** redistributed — MMLongBench-Doc
 documents carry their own licences. `image_path` resolves against
 `<mineru_root>/<doc_id>/`. Get the documents from
 [MMLongBench-Doc](https://github.com/mayubo2333/MMLongBench-Doc) and run MinerU
-2.5 over them.
+2.5 over them, or, to answer questions with the included trees, render the same page
+images with `scripts/render_pages.py --dpi 150 --png` and point `mineru_root` there.
 
 ## Other benchmarks
 

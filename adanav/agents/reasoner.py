@@ -11,7 +11,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 from pathlib import Path
-from typing import List
+from typing import List, Optional
 
 from adanav.agents.chat import ChatModel, Trace
 from adanav.llm import image_part
@@ -28,12 +28,14 @@ class ReasonerOutput:
     query_update: str = ""
     notes: str = ""
     images: int = 0          # page images actually attached
+    tagged: bool = True      # the response followed the tag protocol
 
 
 class Reasoner:
     def __init__(self, chat: ChatModel, prompt: str = "global_reasoner_prompt", max_images: int = 12,
-                 max_tokens: int = 4096):
+                 max_tokens: int = 4096, retry_untagged: bool = False, retry_temperature: float = 0.7):
         self.chat, self.prompt_name, self.max_images, self.max_tokens = chat, prompt, max_images, max_tokens
+        self.retry_untagged, self.retry_temperature = retry_untagged, retry_temperature
         self.template = load_prompt(prompt)
 
     def build_prompt(self, question: str, pages: List[dict], doc_summary: str = "", memory: str = "") -> str:
@@ -41,6 +43,7 @@ class Reasoner:
             "QUESTION": question,
             "RETRIEVED_PAGE_NUMBERS": ", ".join(str(p["page_idx"] + 1) for p in pages),
             "PAGE_TEXT": "\n\n".join(f"[Page {p['page_idx'] + 1}]\n{(p.get('ocr_text') or '').strip() or '(No text extracted)'}"
+                                     + (f"\n[Figure descriptions]\n{p['visual_notes']}" if p.get("visual_notes") else "")
                                      for p in pages),
         }
         if "{DOCUMENT_SUMMARY}" in self.template:
@@ -53,13 +56,19 @@ class Reasoner:
         return self.template.format(**fields)
 
     def answer(self, question: str, pages: List[dict], image_root: Path, trace: Trace,
-               doc_summary: str = "", memory: str = "", round_: int = 1) -> ReasonerOutput:
+               doc_summary: str = "", memory: str = "", round_: int = 1,
+               page_images: Optional[Path] = None) -> ReasonerOutput:
+        """``page_images``: a directory of page_<N>.jpg used instead of the tree's page images."""
         content = [{"type": "text", "text": self.build_prompt(question, pages, doc_summary, memory)}]
         images = 0
         for page in pages:
             if images >= self.max_images:
                 break
-            part = image_part(image_root / page["image_path"], detail="auto") if page.get("image_path") else None
+            override = page_images / f"page_{page['page_idx'] + 1}.jpg" if page_images else None
+            if override is not None and override.is_file():
+                part = image_part(override, detail="auto")
+            else:
+                part = image_part(image_root / page["image_path"], detail="auto") if page.get("image_path") else None
             if part:
                 content += [{"type": "text", "text": f"[Page {page['page_idx'] + 1}]"}, part]
                 images += 1
@@ -68,6 +77,14 @@ class Reasoner:
                                        f"(limit {self.max_images} or missing file)", round=round_)
         reply = self.chat(content, step="reasoner", max_tokens=self.max_tokens, trace=trace, round=round_)
         out = parse_reasoner_response(reply.text)
+        if self.retry_untagged and (not out.tagged or reply.finish_reason == "length"):
+            trace.fallback("reasoner", f"no answer tag (finish_reason={reply.finish_reason}); retrying once "
+                                       f"at temperature {self.retry_temperature}", round=round_)
+            retry = self.chat(content, step="reasoner_retry", max_tokens=self.max_tokens, trace=trace,
+                              temperature=self.retry_temperature, round=round_)
+            second = parse_reasoner_response(retry.text)
+            if second.tagged:
+                out = second
         out.images = images
         return out
 
@@ -89,10 +106,12 @@ def parse_reasoner_response(response: str) -> ReasonerOutput:
             answer = re.sub(r"</?(?:scratchpad|not_answerable|query_update|notes)[^>]*>", "", m.group(1)).strip()
     if not answer and "<not_answerable>" in response:
         answer = NOT_ANSWERABLE
+    # answered through the protocol: a (possibly unclosed) non-empty <answer>, or <not_answerable>
+    tagged = bool(answer)
     if not answer:  # no protocol tags at all
         text = response.strip()
         answer = NOT_ANSWERABLE if "not answerable" in text.lower() else answer_from_free_text(text, analysis)
-    return ReasonerOutput(answer, analysis)
+    return ReasonerOutput(answer, analysis, tagged=tagged)
 
 
 def answer_from_free_text(text: str, analysis: str) -> str:

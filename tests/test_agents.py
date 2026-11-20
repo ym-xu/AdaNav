@@ -257,7 +257,8 @@ class PipelineTest(unittest.TestCase):
         self.assertEqual(pool.kinds(), ["section_filter", "page_nav", "reasoner"])
         reasoner_content = pool.calls[-1][1]
         self.assertIn("text of page 5", reasoner_content[0]["text"])
-        self.assertEqual([c["text"] for c in reasoner_content[1:] if c["type"] == "text"], ["[Page 5]", "[Page 4]"])
+        # retrieval order is [4, 3]; the reasoner sees the pages in document order
+        self.assertEqual([c["text"] for c in reasoner_content[1:] if c["type"] == "text"], ["[Page 4]", "[Page 5]"])
         self.assertEqual(record["usage"]["reasoner_calls"], 1)
         self.assertEqual([e["response"] for e in record["trace"]][-1], "<scratchpad>s</scratchpad><answer>12%</answer>")
 
@@ -283,8 +284,43 @@ class PipelineTest(unittest.TestCase):
         self.assertEqual(config.reasoner_prompt, "global_reasoner_reflect_prompt")
         record = AdaNav("m", pool, config).run("How did revenue change?", make_tree(), self.image_root)
         self.assertEqual(record["answer"], "up")
-        self.assertEqual([r["pages"] for r in record["rounds"]], [[6], [6, 3]])  # update routed to SPECIFIC
+        self.assertEqual([r["pages"] for r in record["rounds"]], [[6], [3, 6]])  # update routed to SPECIFIC
         self.assertIn("need fig", pool.calls[-1][1][0]["text"])
+
+    def test_visual_notes_reach_navigator_and_reasoner(self):
+        tree = make_tree()
+        for section in tree["sections"]:
+            for p in section["pages"]:
+                if p["page_idx"] == 4:
+                    p["elements"].append({"type": "image", "caption": ["Figure 9: Sales"], "text": "",
+                                          "description": "A bar chart of sales by region."})
+        pool = FakePool({"section_filter": "<selected_sections>sec_01</selected_sections>",
+                         "page_nav": "<selected_pages>5</selected_pages>", "reasoner": "<answer>x</answer>"})
+        config = AdaNavConfig.preset("agentic", page_navigator="text")
+        AdaNav("m", pool, config).run("Which region sells most?", tree, self.image_root)
+        nav_prompt = next(c for k, c in pool.calls if k == "page_nav")
+        self.assertIn("Figures:\n    - Figure 9: Sales: A bar chart of sales by region.", nav_prompt)
+        self.assertIn("[Figure descriptions]\n- Figure 9: Sales: A bar chart", pool.calls[-1][1][0]["text"])
+
+    def test_retry_untagged_reasoner_response(self):
+        replies = iter(["I think the answer is somewhere", "<answer>42</answer>"])
+        pool = FakePool({"section_filter": "<selected_sections>sec_02</selected_sections>",
+                         "reasoner": lambda c: next(replies)})
+        record = AdaNav("m", pool, AdaNavConfig.preset("agentic")).run("q", make_tree(), self.image_root)
+        self.assertEqual(record["answer"], "42")
+        self.assertIn("reasoner_retry", [e["step"] for e in record["trace"]])
+
+    def test_page_images_replace_reasoner_images(self):
+        doc_dir = self.image_root / "hires" / "doc"
+        doc_dir.mkdir(parents=True)
+        (doc_dir / "page_7.jpg").write_bytes(b"jpg")
+        pool = FakePool({"section_filter": "<selected_sections>sec_02</selected_sections>",
+                         "reasoner": "<answer>x</answer>"})
+        config = AdaNavConfig.preset("agentic", page_images=str(self.image_root / "hires"))
+        AdaNav("m", pool, config).run("q", make_tree(), self.image_root)
+        urls = [part["image_url"]["url"] for part in pool.calls[-1][1] if part["type"] == "image_url"]
+        self.assertEqual(len(urls), 1)
+        self.assertTrue(urls[0].startswith("data:image/jpeg;base64,"))
 
     def test_single_round_query_update_is_not_answerable(self):
         pool = FakePool({"section_filter": "<selected_sections>sec_02</selected_sections>",
